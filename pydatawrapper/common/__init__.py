@@ -2,42 +2,38 @@ import hashlib
 import httplib
 import hmac
 import json
-import logging
 import requests
-import urlparse
 
 from helpers import generate_url
-from helpers import d
-
-logger = logging.getLogger('request_logger')
 
 DATAWRAPPER_API_PREFIX = ('api',)
 
 
 class RequestObject(object):
     def make_request(self, method, url, data=None):
-        d('%s request: %s' % (method, url))
+        print ('%s request: %s' % (method, url))
         response = requests.request(method=method, url=url, data=data)
 
-        d("status code: %s" % response.status_code)
+        print("status code: %s: %s" % (response.status_code, response.content))
         response.raise_for_status()
 
         parsed_response = self._parse_response(response)
 
-        return parsed_response  # if any other info like headers are required
-                                # a subclass can override the parsed_response
-                                # method and make it happen
+        return parsed_response
+
 
     def _get_url(self):
         raise NotImplementedError("Each object representing a resource should "
                                   "know it's own URL")
 
-    def _parse_response(self, response=None):
-        success = (response.status_code in [httplib.OK, httplib.CREATED] and
-                   response.pop("status", None) == 'ok')
-        data = json.loads(response.content).pop("data")
+    def _parse_response(self, response):
+        success = response.status_code in [httplib.OK, httplib.CREATED]
+        full_data = json.loads(response.content)
 
-        return success, data
+        success = success and full_data.pop("status", None) == 'ok'
+        data = full_data.get('data', None)
+
+        return success, data, response
 
 
 # class DatawrapperRequestObject(RequestObject):
@@ -63,6 +59,7 @@ class Session(RequestObject):
         self.email = email
         self.password = password
         self.server_salt = None
+        self.session_key = None
 
     def _get_url(self):
         # special case where we don't get final url from _get_url, beuh.
@@ -72,20 +69,27 @@ class Session(RequestObject):
         return '/'.join([self._get_url(), action])
 
     def get_server_salt(self):
-        success, data = self.make_request('GET', self._get_url_for_action('salt'))
+        success, data, response = self.make_request('GET', self._get_url_for_action('salt'))
         if 'salt' in data:
-            return data['salt']
+            return str(data['salt'])
 
     def get_session(self):
         salt = self.get_server_salt()
         hashed_password = self._gen_password_hash(salt, self.password)
-        auth_data = {'keeplogin': True,
-                     'pwhash': hashed_password,
-                     'email': self.email}
-        ok, data = self.make_request('POST',
-                                     self._get_url_for_action('login'),
-                                     data=auth_data)
-        print str(data)
+        auth_data = {
+            'keeplogin': 'true',
+            'pwhash': hashed_password,
+            'email': self.email
+        }
+        ok, data, response = self.make_request('POST',
+                                              self._get_url_for_action('login'),
+                                              data=json.dumps(auth_data))
+
+        if 'DW-SESSION' in response.cookies:
+            self.session_key = response.cookies['DW-SESSION']
+            return self.session_key
+        else:
+            return None
 
     def _gen_password_hash(self, salt, password):
         return hmac.new(salt, msg=password, digestmod=hashlib.sha256).digest().encode('hex')

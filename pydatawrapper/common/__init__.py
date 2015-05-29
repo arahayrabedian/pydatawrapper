@@ -10,9 +10,13 @@ DATAWRAPPER_API_PREFIX = ('api',)
 
 
 class RequestObject(object):
-    def make_request(self, method, url, data=None):
+    def make_request(self, method, url, headers=None, cookies=None, data=None):
         print ('%s request: %s' % (method, url))
-        response = requests.request(method=method, url=url, data=data)
+        response = requests.request(method=method,
+                                    url=url,
+                                    data=data,
+                                    headers=headers,
+                                    cookies=cookies)
 
         print("status code: %s: %s" % (response.status_code, response.content))
         response.raise_for_status()
@@ -20,7 +24,6 @@ class RequestObject(object):
         parsed_response = self._parse_response(response)
 
         return parsed_response
-
 
     def _get_url(self):
         raise NotImplementedError("Each object representing a resource should "
@@ -44,9 +47,6 @@ class RequestObject(object):
 #         if path:
 #             self.path = path
 #
-#     def _make_authenticated_request(self, method, url):
-#         raise NotImplementedError()
-#
 #     def _get_url(self):
 #         return generate_url(self.session.base_url, self.path)
 
@@ -68,6 +68,9 @@ class Session(RequestObject):
     def _get_url_for_action(self, action):
         return '/'.join([self._get_url(), action])
 
+    def _gen_password_hash(self, salt, password):
+        return hmac.new(salt, msg=password, digestmod=hashlib.sha256).digest().encode('hex')
+
     def get_server_salt(self):
         success, data, response = self.make_request('GET', self._get_url_for_action('salt'))
         if 'salt' in data:
@@ -84,15 +87,23 @@ class Session(RequestObject):
         ok, data, response = self.make_request('POST',
                                               self._get_url_for_action('login'),
                                               data=json.dumps(auth_data))
-
+        # TODO: check status as well because apparently we get a session whether or not we have a valid session
         if 'DW-SESSION' in response.cookies:
             self.session_key = response.cookies['DW-SESSION']
             return self.session_key
         else:
             return None
 
-    def _gen_password_hash(self, salt, password):
-        return hmac.new(salt, msg=password, digestmod=hashlib.sha256).digest().encode('hex')
+    def make_authenticated_request(self, method, url):
+        assert self.session_key is not None
+        headers = {
+            'accepts': 'application/json',
+        }
+        cookies = {
+            'DW-SESSION': self.session_key,
+        }
+        self.make_request(method=method, url=url, headers=headers,
+                          cookies=cookies)
 
 
 class SerializableObject(object):

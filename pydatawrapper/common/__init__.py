@@ -39,18 +39,6 @@ class RequestObject(object):
         return success, data, response
 
 
-# class DatawrapperRequestObject(RequestObject):
-#     path = DATAWRAPPER_API_PREFIX
-#
-#     def __init__(self, session, path=None):
-#         self.session = session
-#         if path:
-#             self.path = path
-#
-#     def _get_url(self):
-#         return generate_url(self.session.base_url, self.path)
-
-
 class Session(RequestObject):
     auth_path = DATAWRAPPER_API_PREFIX + ('auth',)
 
@@ -102,8 +90,8 @@ class Session(RequestObject):
         cookies = {
             'DW-SESSION': self.session_key,
         }
-        self.make_request(method=method, url=url, headers=headers,
-                          cookies=cookies)
+        return self.make_request(method=method, url=url, headers=headers,
+                                 cookies=cookies)
 
 
 class SerializableObject(object):
@@ -113,3 +101,32 @@ class SerializableObject(object):
 
     def to_json(self):
         json.dumps(self.to_dict())
+
+
+class MappableFieldsObject(SerializableObject):
+    field_mapping = {}
+    include_fields = {}
+    exclude_fields = {}
+
+    def _get_fields(self):
+        # not sure if dangerous, but this gets us a list of fields/values
+        # (set or unset) that the object has, useful for when we're going
+        # to create the data to post or create an object from.
+        return {a for a in dir(self) if not a.startswith('__') and not
+                callable(getattr(self, a))}
+
+
+class DatawrapperRequestObject(RequestObject, MappableFieldsObject):
+    path = DATAWRAPPER_API_PREFIX
+    session = None
+
+    def __init__(self, session, path=None):
+        self.session = session
+        if path:
+            self.path = path
+
+    def _get_url(self):
+        return generate_url(self.session.base_url, self.path)
+
+    def get(self):
+        return self.session.make_authenticated_request('GET', self._get_url())

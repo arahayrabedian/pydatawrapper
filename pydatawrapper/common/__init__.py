@@ -11,7 +11,7 @@ DATAWRAPPER_API_PREFIX = ('api',)
 
 class RequestObject(object):
     def make_request(self, method, url, headers=None, cookies=None, data=None):
-        print ('%s request: %s' % (method, url))
+        print('%s request: %s' % (method, url))
         response = requests.request(method=method,
                                     url=url,
                                     data=data,

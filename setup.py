@@ -5,7 +5,7 @@ setup(
     version="0.1",
     description='python wrapper library for datawrapper',
     author='Ara Hayrabedian',
-    author_email='ara.hayrabedian@gmail.com',
+    author_email='',
     install_requires=[
         "requests",
         "marshmallow",
